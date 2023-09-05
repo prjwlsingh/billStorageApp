@@ -1,0 +1,67 @@
+Contracts for BILL APP
+
+
+1.	API1-Retrieve info from db to list items according to specified requirements;
+  a.	API NAME - userBills
+
+  INPUT:
+  {
+    "UserID":""
+  }
+
+  OUTPUT:
+  {
+    "billId":"",
+    "billTitle":"",
+    "billDate":"",
+    "billTag":"",
+  }
+
+2. API2-Post an image on online storage;
+  b. API NAME - postImage
+
+  INPUT:
+  {
+    "path":"",
+  }
+
+  OUTPUT:
+  {
+    "Status":"",
+    "path":"",
+  }
+
+
+3. API3-Retrieve bill from db;
+  c. API NAME - retrieveBill
+
+  INPUT:
+  {
+    "billId":"",
+  }
+
+  OUTPUT:
+  {
+    "billId":"",
+    "billTitle":"",
+    "billDate":"",
+    "billTag":"",
+    "billDescription":"",
+    "path":"",
+  }
+
+4. API4-Create a bill to put in db;
+  d. API NAME - createBill
+
+  INPUT:
+  {
+    "billTitle":
+    "billDescription":
+    "path":
+    "userID":
+  }
+
+  OUTPUT:
+  {
+    "billID":
+  }
