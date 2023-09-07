@@ -1,145 +1,107 @@
-"""
+from flask import Flask
+from flask_restful import Api, Resource, reqparse, abort, fields, marshal_with
+from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy_utils import UUIDType
+import datetime
+import uuid
 
-task list:
-    1. Start server
-    2. Make class for sql database
-    3. write get and post API definitions
-
-"""
-
-app.config['S3_BUCKET'] = "S3_BUCKET_NAME"
-app.config['S3_KEY'] = "AWS_ACCESS_KEY"
-app.config['S3_SECRET'] = "AWS_ACCESS_SECRET"
-app.config['S3_LOCATION'] = 'http://{}.s3.amazonaws.com/'.format(S3_BUCKET)
-
-from flask import *
-import json
-import sqlite3
-from bill import Bill
-import os
-from dotenv import load_dotenv
-
-load_dotenv()
-
-import boto3, botocore
-
-s3 = boto3.client(
-   "s3",
-   aws_access_key_id=app.config['S3_KEY'],
-   aws_secret_access_key=app.config['S3_SECRET']
-)
-
+# wrapper functions
 app = Flask(__name__)
+api = Api(app)
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
+db = SQLAlchemy(app)
 
-# create db
-def create_db():
-    c = sqlite3.connect("bill.db").cursor()
-    c.execute("CREATE TABLE IF NOT EXISTS BILL("
-              "id TEXT, title TEXT, description TEXT, tag TEXT, date TEXT, cloudPath TEXT, userId TEXT)"
-              )
+# database schema
+class BillModel(db.Model):
+    __tablename__ = 'bills'
+
+
+    id = db.Column(UUIDType(binary=False), primary_key=True, default=uuid.uuid4)
+    title = db.Column(db.String(100), nullable=False)
+    description = db.Column(db.String(500), nullable=True)
+    tag = db.Column(db.String(20), nullable=False)
+    dateTaken = db.Column(db.Text, nullable = False)
+    imagePath = db.Column(db.Text, nullable = False)
+    userId = db.Column(UUIDType(binary=False), db.ForeignKey('users.id'), default=uuid.uuid4, nullable=False)
+
+
+class UserModel(db.Model):
+    __tablename__ = 'users'
+
+    id = db.Column(UUIDType(binary=False), primary_key=True, default=uuid.uuid4)
+    bills = db.relationship('BillModel', backref='users', cascade='all, delete, delete-orphan')
+
+with app.app_context():
+    db.drop_all()
+    db.create_all()
+
+# used to store provided values into dictionary
+bill_put_args = reqparse.RequestParser()
+bill_put_args.add_argument("title", type=str, help="Title is required", location = 'form', required = True)
+bill_put_args.add_argument("description", type=str, help="Description is required", location = 'form', required = True)
+bill_put_args.add_argument("tag", type=str, help="Tag is required", location = 'form', required = True)
+bill_put_args.add_argument("dateTaken", type=str, help="Title is required", location = 'form', required = True)
+bill_put_args.add_argument("imagePath", type=str, help="imagePath not provided", location = 'form', required = True)
+bill_put_args.add_argument("userId", type=str, help="userId not provided", location = 'form', required = True)
+
+user_put_args = reqparse.RequestParser()
+
+
+# used to serialize the object
+resource_fields_bill = {
+    'id' : fields.String,
+    'title' : fields.String,
+    'description' : fields.String,
+    'tag' : fields.String,
+    'dateTaken' : fields.String,
+    'imagePath' : fields.String,
+    'userId' : fields.String
+}
+
+resource_fields_user = {
+    'id' : fields.String
+}
+
+# get and post requests for the db
+
+class Bill(Resource):
+    @marshal_with(resource_fields_bill) # take return value and serailize using defined fields
+    def get(self, billId):
+        result = BillModel.query.filter_by(id=billId).first()
+        if not result:
+            abort(404, message='could not find the bill with given id')
+        return result
     
-    c.execute("CREATE TABLE IF NOT EXISTS USER("
-              "userId TEXT)"
-              )
-    c.connection.close()
+    @marshal_with(resource_fields_bill)
+    def post(self, billId):
+        args = bill_put_args.parse_args()
 
-@app.route('/', methods=['GET'])
-def create_db():
-    create_db()
-    return 'bill and user DB created'
+        bill = BillModel(title=args["title"],
+                        description=args["description"],
+                        tag=args["tag"],
+                        dateTaken=args["dateTaken"],
+                        imagePath=args["imagePath"],
+                        userId=args["userId"])
 
-"""
-there are 4 app routes
-1. retrieve list of user bills
-2. post image 
-3. retrieve bill using bill id
-4. create bill to put in db
+        db.session.add(bill)
+        db.session.commit()
 
+        return bill, 201
 
-"""
+class User(Resource):
+    @marshal_with(resource_fields_user)    
+    def post(self):
+        args = user_put_args.parse_args()
 
-# get list of user bills from db
-@app.route('/getUserBill', methods=['GET'])
-def get_userBills(userId):
-    c = sqlite3.connect("bill.db").cursor()
-    c.execute("SELECT * FROM BILL WHERE userId=?", userId)
-    data = c.fetchall()
-    return jsonify(data)
-
+        user = UserModel()
+        db.session.add(user)
+        db.session.commit()
+        userID = db.session.query(UserModel).order_by(UserModel.id.desc()).first()
+        return userID , 201  
 
 
-# get a bill with particular bill id
-@app.route('/getBill', methods=['GET'])
-def get_bill(billId):
-    c = sqlite3.connect("bill.db").cursor()
-    c.execute("SELECT * FROM BILL WHERE id=?", billId)
-    data = c.fetchall()
-    return jsonify(data)
-
-
-
-# post bill into db
-@app.route('/createBill', methods=['POST','GET'])
-def create_bill(payload):
-    db = sqlite3.connect("bill.db")
-    c = db.cursor()
-    bill = Bill(request.form["billTitle"],
-                request.form["billDescription"],
-                request.form["tag"],
-                request.form["date"],
-                request.form["cloudPath"],
-                request.form["userID"]
-                )   
-
-    c.execute("INSERT INTO bill VALUES(?,?,?,?,?)",
-              (bill.id, bill.title, bill.description, bill.tag, bill.date, bill.cloudPath, bill.userId))
-    
-    db.commit()
-    data = c.lastrowid
-    return json.dumps(data)
-
-   
-
-# post image to cloud
-@app.route('/postImage', methods=['POST', 'GET'])
-def post_image():
-    if "user_file" not in request.files:
-        return "No user_file key in request.files"
-
-    file = request.files["user_file"]
-
-    if file.filename == "":
-        return "Please select a file"
-
-    if file:
-        file.filename = secure_filename(file.filename)
-        output = upload_file_to_s3(file, app.config["S3_BUCKET"])
-        return str(output)
-
-    else:
-        return redirect("/")
-
-
-def upload_file_to_s3(file, bucket_name, acl="public-read"):
-    """
-    Docs: http://boto3.readthedocs.io/en/latest/guide/s3.html
-    """
-    try:
-        s3.upload_fileobj(
-            file,
-            bucket_name,
-            file.filename,
-            ExtraArgs={
-                "ACL": acl,
-                "ContentType": file.content_type    #Set appropriate content type as per the file
-            }
-        )
-    except Exception as e:
-        print("Something Happened: ", e)
-        return e
-    return "{}{}".format(app.config["S3_LOCATION"], file.filename)
-
-#server
+api.add_resource(Bill, "/bill/<string:billId>/")
+api.add_resource(User, "/user/")
 
 if __name__ == '__main__':
-    app.run(port=8888)
+    app.run(debug=True)
