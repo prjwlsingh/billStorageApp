@@ -1,20 +1,23 @@
-from flask import Flask
+from flask import Flask, redirect, url_for, request, render_template
 from flask_restful import Api, Resource, reqparse, abort, fields, marshal_with
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy_utils import UUIDType
 import datetime
 import uuid
+#import boto3
 
-# wrapper functions
-app = Flask(__name__)
-api = Api(app)
+# flow of app 
+
+# wrapper functions 
+    # need to understand what each of them does
+app = Flask(__name__) # creates flask instance
+api = Api(app) # create instance of api with the flask application. define and manage restful apis
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
-db = SQLAlchemy(app)
+db = SQLAlchemy(app) # create instance of sqlalchemy class 
 
 # database schema
 class BillModel(db.Model):
     __tablename__ = 'bills'
-
 
     id = db.Column(UUIDType(binary=False), primary_key=True, default=uuid.uuid4)
     title = db.Column(db.String(100), nullable=False)
@@ -24,16 +27,16 @@ class BillModel(db.Model):
     imagePath = db.Column(db.Text, nullable = False)
     userId = db.Column(UUIDType(binary=False), db.ForeignKey('users.id'), default=uuid.uuid4, nullable=False)
 
-
 class UserModel(db.Model):
     __tablename__ = 'users'
 
     id = db.Column(UUIDType(binary=False), primary_key=True, default=uuid.uuid4)
     bills = db.relationship('BillModel', backref='users', cascade='all, delete, delete-orphan')
 
-with app.app_context():
-    db.drop_all()
-    db.create_all()
+# what does each function do
+# with app.app_context():
+#     db.drop_all()
+#     db.create_all()
 
 # used to store provided values into dictionary
 bill_put_args = reqparse.RequestParser()
@@ -45,7 +48,6 @@ bill_put_args.add_argument("imagePath", type=str, help="imagePath not provided",
 bill_put_args.add_argument("userId", type=str, help="userId not provided", location = 'form', required = True)
 
 user_put_args = reqparse.RequestParser()
-
 
 # used to serialize the object
 resource_fields_bill = {
@@ -66,11 +68,23 @@ resource_fields_user = {
 
 class Bill(Resource):
     @marshal_with(resource_fields_bill) # take return value and serailize using defined fields
-    def get(self, billId):
-        result = BillModel.query.filter_by(id=billId).first()
+    def get(self, billId=None):
+        
+        # Get a specific bill by ID
+        if billId:
+            result = BillModel.query.filter_by(id=billId).first()
+        else:
+            result = BillModel.query.all()
         if not result:
-            abort(404, message='could not find the bill with given id')
+            abort(404, message='Could not find the bill with the given ID')
         return result
+
+    # @marshal_with(resource_fields_bill)
+    # def get(self, billId):
+    #     result = BillModel.query.filter_by(id=billId).first()
+    #     if not result:
+    #         abort(404, message='could not find the bill with given id')
+    #     return result
     
     @marshal_with(resource_fields_bill)
     def post(self, billId):
@@ -87,7 +101,23 @@ class Bill(Resource):
         db.session.commit()
 
         return bill, 201
+    
+    # @marshal_with(resource_fields_bill)
+    # def get(self):
+        
+    #     # Get a specific bill by ID
+    #     result = BillModel.query.all()
+    #     if not result:
+    #         abort(404, message='Could not find the bill with the given ID')
+        # return result
 
+    # @marshal_with(resource_fields_bill)
+    # def get(self, billId):
+    #     result = BillModel.query.filter_by(id=billId).first()
+    #     if not result:
+    #         abort(404, message='could not find the bill with given id')
+    #     return result
+    
 class User(Resource):
     @marshal_with(resource_fields_user)    
     def post(self):
@@ -97,11 +127,12 @@ class User(Resource):
         db.session.add(user)
         db.session.commit()
         userID = db.session.query(UserModel).order_by(UserModel.id.desc()).first()
-        return userID , 201  
+        return userID , 201
 
-
-api.add_resource(Bill, "/bill/<string:billId>/")
+# api.add_resource(Bill, "/bills/")
+api.add_resource(Bill, "/bill/<string:billId>/", "/bills/")
 api.add_resource(User, "/user/")
+
 
 if __name__ == '__main__':
     app.run(debug=True)

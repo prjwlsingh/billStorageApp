@@ -1,0 +1,15 @@
+app flow->
+
+# open app:
+    user first signs into the app
+    we then create a db calls bills and users if it doesn't exist
+
+# after logging in:
+    we then list all the bills for that user
+
+# if user clicks on a bill:
+    for that user id
+        for that bill id
+            retrieve info from aws and the bills db
+
+
